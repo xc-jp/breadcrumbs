@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -25,7 +24,15 @@ import Control.Monad.Fail
 import Control.Monad.Trans.Maybe
 import Control.Applicative
 
+-- | Class of monads that can be run in some annotated environment, analogous to a stack frame.
 class MonadError e m => MonadTrace e s m | m -> e, m -> s where
+  -- | Run an action, prepending @s@ to the stack.
+  --
+  -- > traceError "action a" $ do
+  -- >   actionA
+  -- >   traceError "action b" $ do
+  -- >     actionB
+  --
   traceError :: s -> m a -> m a
 
 instance Monad m => MonadError e (TraceT e s m) where
@@ -40,6 +47,11 @@ instance MonadTrace e s m => MonadTrace e s (ReaderT r m) where traceError s m =
 instance MonadTrace e s m => MonadTrace e s (IdentityT m) where traceError s m = IdentityT $ traceError s (runIdentityT m)
 instance MonadTrace e s m => MonadTrace e s (MaybeT m)    where traceError s m = MaybeT    $ traceError s (runMaybeT m)
 
+-- | The stack trace monad transformer.
+--   Augmented version of 'ExceptT', that fails with an error and a stack of enclosing 'traceError' frames.
+--   To fail, use 'throwError'.
+--
+--   This might get changed, but currently 'catchError' will destroy the enclosed action's stack trace.
 newtype TraceT e s m a = TraceT {unTrace :: ExceptT (e,[s]) m a}
     deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadFail, Eq, Show)
 
@@ -53,12 +65,14 @@ deriving instance (Monad m, Monoid e) => MonadPlus (TraceT e s m)
 
 type Trace e s a = TraceT e s Identity a
 
+-- | Run a `TraceT` and its enclosed `ExceptT`.
 runTraceT :: TraceT e s m a -> m (Either (e,[s]) a)
 runTraceT (TraceT m) = runExceptT m
 
 runTrace :: Trace e s a -> Either (e,[s]) a
 runTrace = runIdentity . runTraceT
 
+-- | Modify a `TraceT`'s base monad, error/stack type, and/or result value.
 mapTraceT :: (m (Either (e,[s]) a) -> n (Either (e',[s']) b))
           -> TraceT e s m a
           -> TraceT e' s' n b
@@ -80,7 +94,13 @@ mapError :: (e -> e')
          -> Trace e' s a
 mapError = mapErrorT
 
-showStackTrace :: (Int -> s -> ShowS) -> (Int -> e -> ShowS) -> (e,[s]) -> String
+-- | Efficiently print a stack trace.
+--   Function arguments take an additional 'Int' argument indicating their depth.
+--   This can be useful to e.g. prepend spaces to show an indented trace.
+showStackTrace :: (Int -> s -> ShowS)
+               -> (Int -> e -> ShowS)
+               -> (e,[s])
+               -> String
 showStackTrace fs fe (e,st) = go st 0 ""
   where
     go (s:ss) n = fs n s . go ss (n+1)
