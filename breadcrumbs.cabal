@@ -1,0 +1,31 @@
+cabal-version: >= 1.10
+name:           breadcrumbs
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/xc-jp/breadcrumbs#readme>
+homepage:       https://github.com/xc-jp/breadcrumbs#readme
+bug-reports:    https://github.com/xc-jp/breadcrumbs/issues
+author:         Jonas Carpay
+maintainer:     jonascarpay@gmail.com
+copyright:      2019 Cross Compass Ltd.
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/xc-jp/breadcrumbs
+
+library
+  exposed-modules:
+      Control.Monad.Trace
+  hs-source-dirs:
+      src
+  ghc-options:
+    -Wall
+  build-depends:
+      base >=4.7 && <5
+    , mtl
+    , transformers
+  default-language: Haskell2010
