@@ -22,6 +22,7 @@ import Control.Monad.State
 import Control.Monad.RWS
 import Control.Monad.Fail
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Control
 import Control.Applicative
 
 -- | Class of monads that can be run in some annotated environment, analogous to a stack frame.
@@ -42,10 +43,16 @@ instance Monad m => MonadError e (TraceT e s m) where
 instance Monad m => MonadTrace s e (TraceT s e m) where
     traceError s (TraceT except) = TraceT $ withExceptT (\(e,ss) -> (e,s:ss)) except
 
-instance MonadTrace e q m => MonadTrace e q (StateT s m)  where traceError s m = get >>= lift . traceError s . evalStateT m
-instance MonadTrace e s m => MonadTrace e s (ReaderT r m) where traceError s m = ask >>= lift . traceError s . runReaderT m
-instance MonadTrace e s m => MonadTrace e s (IdentityT m) where traceError s m = IdentityT $ traceError s (runIdentityT m)
-instance MonadTrace e s m => MonadTrace e s (MaybeT m)    where traceError s m = MaybeT    $ traceError s (runMaybeT m)
+-- default version of traceError for monad transformers with a MonadTransControl instance
+mtcTraceError :: (MonadTransControl t, MonadError e (t m), MonadTrace e s m)
+              => s -> t m a -> t m a
+mtcTraceError frame inner = liftWith (\run -> traceError frame (run inner)) >>= restoreT . pure
+
+instance MonadTrace e s m => MonadTrace e s (StateT q m)  where traceError = mtcTraceError
+instance MonadTrace e s m => MonadTrace e s (ReaderT r m) where traceError = mtcTraceError
+instance MonadTrace e s m => MonadTrace e s (IdentityT m) where traceError = mtcTraceError
+instance MonadTrace e s m => MonadTrace e s (MaybeT m)    where traceError = mtcTraceError
+instance (Monoid w, MonadTrace e s m) => MonadTrace e s (RWST r w q m)where traceError = mtcTraceError
 
 -- | The stack trace monad transformer.
 --   Augmented version of 'ExceptT', that fails with an error and a stack of enclosing 'traceError' frames.
